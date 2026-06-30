@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Retail Inventory Engine</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-radius: 12px; }
+        .badge-stock { font-size: 0.9rem; padding: 6px 12px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <header class="pb-4 mb-5 border-bottom">
+            <h1 class="display-5 fw-bold text-dark">Smart Retail Inventory Engine</h1>
+            <p class="text-muted">Volume-Based Tiered Pricing & Dynamic State Ledger Control</p>
+        </header>
+
+        <div class="row g-5">
+            <div class="col-lg-7">
+                <div class="card p-4 bg-white mb-4">
+                    <h3 class="h5 fw-bold text-secondary mb-4">Real-Time Inventory Status</h3>
+                    <div id="inventory-list" class="list-group list-group-flush">
+                        </div>
+                </div>
+                
+                <div class="card p-4 bg-dark text-white">
+                    <h4 class="h6 fw-bold text-warning uppercase mb-2">Active Pricing Incentives</h4>
+                    <ul class="small mb-0 opacity-75 ps-3">
+                        <li>Mechanical Keyboard: 10+ units = 10% off | 20+ units = 20% off</li>
+                        <li>Wireless Ergonomic Mouse: 15+ units = 15% off</li>
+                        <li>Type-C Hub Adapter: 5+ units = 25% off</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="card p-4 bg-white sticky-top" style="top: 2rem;">
+                    <h3 class="h5 fw-bold text-secondary mb-4">Interactive Order Console</h3>
+                    
+                    <form id="order-form">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold text-muted small">Select Retail Item</label>
+                            <select id="item-selector" class="form-select form-select-lg" required>
+                                <option value="" disabled selected>Choose a product...</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-muted small">Target Order Volume</label>
+                            <input type="number" id="item-quantity" class="form-control form-control-lg" min="1" value="1" required disabled>
+                        </div>
+
+                        <div id="pricing-preview" class="p-3 bg-light rounded-3 mb-4 d-none">
+                            <div class="d-flex justify-content-between small text-muted mb-1">
+                                <span>Dynamic Unit Price:</span>
+                                <span id="calc-unit-price">₹0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between small text-muted mb-2">
+                                <span>Tier Incentive Discount:</span>
+                                <span id="calc-discount" class="text-success fw-bold">0%</span>
+                            </div>
+                            <hr class="my-2">
+                            <div class="d-flex justify-content-between fw-bold text-dark fs-5">
+                                <span>Total Price:</span>
+                                <span id="calc-total-price">₹0.00</span>
+                            </div>
+                        </div>
+
+                        <div id="status-message" class="alert d-none mb-3" role="alert"></div>
+
+                        <button type="submit" id="submit-btn" class="btn btn-primary btn-lg w-100 fw-bold" disabled>Confirm Purchase Order</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const itemSelector = document.getElementById("item-selector");
+            const itemQuantity = document.getElementById("item-quantity");
+            const pricingPreview = document.getElementById("pricing-preview");
+            const calcUnitPrice = document.getElementById("calc-unit-price");
+            const calcDiscount = document.getElementById("calc-discount");
+            const calcTotalPrice = document.getElementById("calc-total-price");
+            const submitBtn = document.getElementById("submit-btn");
+            const statusMessage = document.getElementById("status-message");
+
+            function loadInventory() {
+                fetch("/api/items")
+                    .then(res => res.json())
+                    .then(items => {
+                        const listContainer = document.getElementById("inventory-list");
+                        const currentSelection = itemSelector.value;
+                        
+                        listContainer.innerHTML = "";
+                        itemSelector.innerHTML = '<option value="" disabled selected>Choose a product...</option>';
+
+                        items.forEach(item => {
+                            // Update List View
+                            const stockBadge = item.stock_level > 10 
+                                ? `<span class="badge bg-success-subtle text-success badge-stock">${item.stock_level} Units Available</span>`
+                                : item.stock_level > 0 
+                                    ? `<span class="badge bg-warning-subtle text-warning badge-stock">Low Stock: ${item.stock_level} Left</span>`
+                                    : `<span class="badge bg-danger-subtle text-danger badge-stock">Out of Stock</span>`;
+
+                            listContainer.innerHTML += `
+                                <div class="list-group-item d-flex justify-content-between align-items-center py-3 px-0 border-bottom">
+                                    <div>
+                                        <h5 class="mb-1 h6 fw-bold text-dark">${item.name}</h5>
+                                        <small class="text-muted">Base Cost: ₹${item.base_price.toFixed(2)} / unit</small>
+                                    </div>
+                                    ${stockBadge}
+                                </div>
+                            `;
+
+                            // Repopulate Dropdown
+                            const option = document.createElement("option");
+                            option.value = item.id;
+                            option.textContent = `${item.name} (₹${item.base_price})`;
+                            if (item.stock_level <= 0) option.disabled = true;
+                            itemSelector.appendChild(option);
+                        });
+
+                        if (currentSelection) {
+                            itemSelector.value = currentSelection;
+                        }
+                    });
+            }
+
+            function updatePricingPreview() {
+                const itemId = itemSelector.value;
+                const quantity = itemQuantity.value;
+
+                if (!itemId || quantity <= 0) {
+                    pricingPreview.classList.add("d-none");
+                    submitBtn.disabled = true;
+                    return;
+                }
+
+                fetch("/api/calculate-price", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ item_id: itemId, quantity: quantity })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    calcUnitPrice.textContent = `₹${data.unit_price.toFixed(2)}`;
+                    calcDiscount.textContent = `${data.discount_applied}% Off`;
+                    calcTotalPrice.textContent = `₹${data.total_price.toFixed(2)}`;
+                    pricingPreview.classList.remove("d-none");
+                    submitBtn.disabled = false;
+                });
+            }
+
+            itemSelector.addEventListener("change", () => {
+                itemQuantity.disabled = false;
+                updatePricingPreview();
+            });
+
+            itemQuantity.addEventListener("input", updatePricingPreview);
+
+            document.getElementById("order-form").addEventListener("submit", (e) => {
+                e.preventDefault();
+                statusMessage.classList.add("d-none");
+
+                fetch("/api/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ item_id: itemSelector.value, quantity: itemQuantity.value })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    statusMessage.classList.remove("d-none", "alert-success", "alert-danger");
+                    if (data.success) {
+                        statusMessage.classList.add("alert-success");
+                        statusMessage.textContent = `${data.message} Total Paid: ₹${data.total_paid.toFixed(2)}`;
+                        itemQuantity.value = 1;
+                        pricingPreview.classList.add("d-none");
+                        submitBtn.disabled = true;
+                        loadInventory();
+                    } else {
+                        statusMessage.classList.add("alert-danger");
+                        statusMessage.textContent = data.error;
+                    }
+                });
+            });
+
+            loadInventory();
+        });
+    </script>
+</body>
+</html>
